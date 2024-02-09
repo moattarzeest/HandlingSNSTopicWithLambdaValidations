@@ -208,7 +208,7 @@ def SNS_subscription_SQS(access_key_id, secret_access_key, region='us-east-1'):
                 return
 
         print(f"No SNS subscription found for SQS queue '{queue_name}'.")
-        make_res.add_results("SNS subscription not created correctly", EduResult.Fail)
+        make_res.add_results("SNS subscription not created", EduResult.Fail)
 
     except Exception as e:
         print(f"An error occurred while checking SNS subscription: {str(e)}")
@@ -222,21 +222,88 @@ def SNS_subscription_Email(access_key_id, secret_access_key, region='us-east-1')
         # Get the list of subscriptions for the SNS topic
         response = sns_client.list_subscriptions()
         subscriptions = response.get('Subscriptions', [])
-        print("Subscriptions: ", subscriptions)
+        next_token = response.get('NextToken')
+        print("Subscriptions>>>>>>", subscriptions)
+        print("Subscriptions response??????", response)
+        print("Next token>>>>>", next_token)
 
-        # Check if there is a subscription for the SQS queue endpoint
-        for subscription in subscriptions:
+        while next_token:
+            response = sns_client.list_subscriptions(NextToken=next_token)
+            subscriptions_next_token = response.get('Subscriptions', [])
+            next_token = response.get('NextToken')
+            print("subsbsbss",subscriptions_next_token)
+
+        if subscriptions == []:
+            make_res.add_results("SNS subscription not found for email", EduResult.Fail)
+        
+        else:
+        for subscription in subscriptions_next_token:
+            print("sub", subscription)
             if subscription.get('Protocol') == 'email':
                 print(f"SNS subscription found for Email")
                 make_res.add_results("SNS Subscription for email", EduResult.Pass)
                 return
-
-        print(f"No SNS subscription found for SQS queue ")
-        make_res.add_results("SNS subscription not found for email", EduResult.Fail)
+            
+            print(f"No SNS subscription found for email")
+            make_res.add_results("SNS subscription not found for email", EduResult.Fail)
 
     except Exception as e:
         print(f"An error occurred while checking SNS subscription: {str(e)}")
         make_res.add_results("SNS Subscription for Email not found", EduResult.Fail)
+
+def SQS_messages(access_key_id, secret_access_key, region='us-east-1'):
+    sqs_client = boto3.client('sqs', aws_access_key_id=access_key_id, aws_secret_access_key=secret_access_key, region_name=region)
+
+    queue_name = 'ReminderQueue'
+
+    try:
+        # Get the URL of the SQS queue by name
+        response = sqs_client.get_queue_url(QueueName=queue_name)
+        queue_url = response.get('QueueUrl')
+
+        if not queue_url:
+            print(f"No SQS queue with name '{queue_name}' found.")
+            make_res.add_results("SQS Messages Check", EduResult.Fail)
+            return
+
+        # Receive messages from the queue
+        response = sqs_client.receive_message(QueueUrl=queue_url, MaxNumberOfMessages=1)
+
+        # Check if any messages were received
+        if 'Messages' in response:
+            print(f"SQS queue '{queue_name}' has messages in the 'Messages' section.")
+            make_res.add_results("SQS Messages Check", EduResult.Pass)
+        else:
+            print(f"SQS queue '{queue_name}' does not have any messages in the 'Messages' section.")
+            make_res.add_results("SQS doesnt have any messages", EduResult.Fail)
+
+    except Exception as e:
+        print(f"An error occurred while checking SQS messages: {str(e)}")
+        make_res.add_results("SQS Messages Check", EduResult.Fail)
+
+def Eventbridge_rule(access_key_id, secret_access_key, region='us-east-1'):
+    eventbridge_client = boto3.client('events', aws_access_key_id=access_key_id, aws_secret_access_key=secret_access_key, region_name=region)
+
+    rule_name = 'ReminderSchedule'  
+
+    try:
+        # List all rules in EventBridge
+        response = eventbridge_client.list_rules(NamePrefix=rule_name)
+
+        # Check if the rule exists
+        rules = response.get('Rules', [])
+        for rule in rules:
+            if rule['Name'] == rule_name:
+                print(f"EventBridge rule '{rule_name}' found.")
+                make_res.add_results("EventBridge Rule Check", EduResult.Pass)
+                return
+
+        print(f"No EventBridge rule with name '{rule_name}' found.")
+        make_res.add_results("No EventBridge Rule found", EduResult.Fail)
+
+    except Exception as e:
+        print(f"An error occurred while checking EventBridge rules: {str(e)}")
+        make_res.add_results("EventBridge Rule Check", EduResult.Fail)
 
 
 
@@ -246,14 +313,17 @@ if __name__ == "__main__":
     print("access:",os.getenv("access_key_id"))
     print("secret access:",os.getenv("secret_access_key"))
     try:
-        # SNS_topic(os.getenv("access_key_id"), os.getenv("secret_access_key"))
-        # IAM_Role(os.getenv("access_key_id"), os.getenv("secret_access_key"))
-        # check_lambda_function(os.getenv("access_key_id"), os.getenv("secret_access_key"))
-        # get_access_policy(os.getenv("access_key_id"), os.getenv("secret_access_key"))
+        SNS_topic(os.getenv("access_key_id"), os.getenv("secret_access_key"))
+        IAM_Role(os.getenv("access_key_id"), os.getenv("secret_access_key"))
+        check_lambda_function(os.getenv("access_key_id"), os.getenv("secret_access_key"))
+        get_access_policy(os.getenv("access_key_id"), os.getenv("secret_access_key"))
         SQS_Queue(os.getenv("access_key_id"), os.getenv("secret_access_key"))
         sqs_access_policy(os.getenv("access_key_id"), os.getenv("secret_access_key"))
         SNS_subscription_SQS(os.getenv("access_key_id"), os.getenv("secret_access_key"))
         SNS_subscription_Email(os.getenv("access_key_id"), os.getenv("secret_access_key"))
+        SQS_messages(os.getenv("access_key_id"), os.getenv("secret_access_key"))
+        Eventbridge_rule(os.getenv("access_key_id"), os.getenv("secret_access_key"))
+
     except:
         print("Error Running function")
 
